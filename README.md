@@ -7,7 +7,7 @@
 | 功能 | 状态 | 说明 |
 |-----|------|------|
 | SDK 初始化 | ✅ | License 授权验证 |
-| 蓝牙设备扫描 | ✅ | 扫描 EEG Sensor 设备 |
+| 蓝牙设备扫描 | ✅ | 扫描 EEG Sensor / SmartEEG 设备 |
 | 蓝牙设备连接 | ✅ | BLE 连接管理 |
 | 实时数据采集 | ✅ | 250Hz 原始采样 → 50Hz 滤波输出 |
 | 实时波形显示 | ✅ | SwiftUI Path 绘制 |
@@ -20,7 +20,7 @@
 
 ### 1. 添加 SDK 依赖
 
-项目已内置本地二进制包 `./binary`，通过 Swift Package 方式引用：
+项目通过 Swift Package 引用本地二进制包 `./binary`，用于对外发布 Demo 时隐藏 SDK 源码。
 
 ```swift
 // 在 Xcode 中：
@@ -35,7 +35,7 @@ dependencies: [
 ]
 ```
 
-> 如需更新 SDK 二进制：在内部 SDK 仓库执行打包脚本后，替换本项目的 `binary/` 目录。
+> 如需更新 SDK 二进制：可从 `neuroMetaCN/neurometa-ios-sdk` 的 GitHub Actions 下载 `NeuroMetaSDK-Release-xcframework` artifact，或在 SDK 仓库的 macOS/Xcode 环境执行 `scripts/build_binary_package.sh` 后替换本项目的 `binary/` 目录。
 
 ### 2. 配置 Info.plist
 
@@ -67,7 +67,7 @@ License JSON 格式：
 {
   "appKey": "your_app_key",
   "packageName": "your.bundle.id",
-  "deviceTypes": ["EEG_SENSOR"],
+  "deviceTypes": ["EEG_SENSOR", "SMART_EEG"],
   "features": ["DATA_COLLECT", "EDF_RECORD", "FILTER"],
   "issueDate": "2026-01-30",
   "expireDate": "2027-01-30",
@@ -210,7 +210,8 @@ func connectDevice(_ device: Device) async {
     do {
         try await sdk.deviceManager.connect(
             deviceId: device.id,
-            centralManager: centralManager
+            centralManager: centralManager,
+            deviceName: device.name
         )
         print("连接成功，开始接收数据")
         // 数据会自动推送到已注册的监听器
@@ -219,6 +220,8 @@ func connectDevice(_ device: Device) async {
     }
 }
 ```
+
+默认扫描过滤已包含 `eeg / sensor / neuro / smarteeg / em09e`。`SmartEEG-XXXX` 与 `EM09E-XXXXXX` 会被识别为 `SMART_EEG`，Demo 无需单独切换模式。
 
 ---
 

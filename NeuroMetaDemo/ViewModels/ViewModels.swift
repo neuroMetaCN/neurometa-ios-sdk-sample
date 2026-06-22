@@ -87,7 +87,8 @@ final class DeviceViewModel: ObservableObject {
             do {
                 try await sdk.deviceManager.connect(
                     deviceId: device.id,
-                    centralManager: centralManager
+                    centralManager: centralManager,
+                    deviceName: device.name
                 )
                 await MainActor.run {
                     self.connectionState = .connected

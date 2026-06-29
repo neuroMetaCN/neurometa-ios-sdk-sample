@@ -11,7 +11,7 @@ final class ScanViewModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var isScanning = false
     @Published var errorMessage: String?
-    private let sdk = NeuroMetaSDK.shared
+    private let sdk = NeuroMeta.shared
 
     private func upsertDevice(_ device: Device) {
         if let index = devices.firstIndex(where: { $0.id == device.id }) {
@@ -66,7 +66,7 @@ final class DeviceViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var latestRawLog: String?
 
-    private let sdk = NeuroMetaSDK.shared
+    private let sdk = NeuroMeta.shared
     private var realtimeListenerId: UUID?
     private var statusListenerId: UUID?
     private var unfilteredListenerId: UUID?
@@ -195,7 +195,7 @@ final class RecordingViewModel: ObservableObject {
     @Published var filePath: String?
     @Published var recordCount: Int = 0
 
-    private let sdk = NeuroMetaSDK.shared
+    private let sdk = NeuroMeta.shared
     private var rawListenerId: UUID?
     private var timer: Timer?
 

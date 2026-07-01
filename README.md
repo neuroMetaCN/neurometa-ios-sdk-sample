@@ -123,7 +123,7 @@ iOS 蓝牙权限通过 `Info.plist` 声明，系统会在首次使用时自动�
 ```swift
 import NeuroMetaSDK
 
-let sdk = NeuroMeta.shared
+let sdk = NeuroMetaSDK.shared
 
 func initSDK() {
     do {
@@ -175,7 +175,7 @@ func setupDataListeners() {
 **监听器类型对比：**
 
 | 监听器 | 采样率 | 滤波状态 | 典型用途 |
-|-------|-------|---------|---------| 
+|-------|-------|---------|---------|
 | `addRealtimeListener` | 50Hz | ✅ 已滤波 | UI 波形显示 |
 | `addUnfilteredListener` | 250Hz | ❌ 未滤波 | 调试/科研分析 |
 | `addFilteredListener` | 250Hz | ✅ 已滤波 | 特征提取 |
@@ -283,6 +283,16 @@ func stopRecording() {
 }
 ```
 
+## SmartEEG Firmware OTA
+
+The SDK supports local-file SmartEEG firmware OTA on iOS 13.0+.
+
+- The app provides a local firmware file URL.
+- The SDK validates, splits, and writes OTA packets over BLE.
+- `awaitAck` defaults to `false` for faster transfer.
+- Enable `awaitAck` for diagnostics when device responses are needed.
+- The SDK does not download firmware or perform remote version checks.
+
 ---
 
 ### Step 7: 资源释放
@@ -354,7 +364,7 @@ neurometa-ios-demo/
 ## 📞 技术支持
 
 - **SDK 版本**: v1.0.0
-- **最低 iOS 版本**: iOS 15.0+
+- **最低 iOS 版本**: iOS 13.0+
 - **开发工具**: Xcode 15.0+
 - **设备要求**: 真实 iPhone 设备 (BLE 功能)
 - **联系方式**: sdk-support@neurometa.com.cn

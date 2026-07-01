@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "NeuroMetaSDKBinary",
     platforms: [
-        .iOS(.v15),
+        .iOS(.v13),
         .macOS(.v12),
     ],
     products: [

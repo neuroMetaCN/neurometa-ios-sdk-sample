@@ -1,21 +1,24 @@
-import SwiftUI
-import NeuroMetaSDK
+import Combine
 import CoreBluetooth
+import NeuroMetaSDK
+import SwiftUI
+import UIKit
 
 /// 主页面 - 统一仪表盘风格
 struct ContentView: View {
-    @StateObject private var scanVM = ScanViewModel()
-    @StateObject private var deviceVM = DeviceViewModel()
-    @StateObject private var recordingVM = RecordingViewModel()
+    @ObservedObject private var scanVM = ScanViewModel()
+    @ObservedObject private var deviceVM = DeviceViewModel()
+    @ObservedObject private var recordingVM = RecordingViewModel()
     @State private var centralManager = CBCentralManager(delegate: nil, queue: .main)
-    
+    @State private var showingFirmwarePicker = false
+
     // 状态
     @State private var currentTime: String = ""
     @State private var logs: [LogMessage] = []
-    
+
     // 定时器
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
+
     // 颜色常量
     let backgroundDark = Color(red: 0.04, green: 0.04, blue: 0.04) // #0A0A0A
     let surfaceDark = Color(red: 0.1, green: 0.1, blue: 0.1) // #1A1A1A
@@ -23,28 +26,31 @@ struct ContentView: View {
     let textSecondary = Color.gray
     let accentGreen = Color(red: 0.0, green: 1.0, blue: 0.0) // #00FF00
     let accentRed = Color(red: 0.9, green: 0.22, blue: 0.21) // #E53935
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 headerSection
-                
+
                 // Status Cards
                 statusCards
-                
+
                 // Devices Section
                 devicesSection
-                
+
                 // Realtime EEG Area
                 eegSection
-                
+
                 // Main Buttons
                 buttonsSection
-                
+
+                // Firmware OTA
+                otaSection
+
                 // Console Log
                 consoleLogSection
-                
+
                 // EDF Recording Footer
                 recordFooter
             }
@@ -60,7 +66,7 @@ struct ContentView: View {
         .onReceive(timer) { _ in
             updateTime()
         }
-        .onChange(of: deviceVM.connectionState) { state in
+        .onReceive(deviceVM.$connectionState.dropFirst()) { state in
             switch state {
             case .connected:
                 logMessage("Connected to \(deviceVM.currentDevice?.displayName ?? "device")", type: .success)
@@ -72,30 +78,45 @@ struct ContentView: View {
                 break
             }
         }
-        .onChange(of: deviceVM.errorMessage) { message in
-            guard let message else { return }
+        .onReceive(deviceVM.$errorMessage.dropFirst().compactMap { $0 }) { message in
             logMessage("Connection failed: \(message)", type: .error)
         }
-        .onChange(of: deviceVM.latestRawLog) { message in
-            guard let message else { return }
+        .onReceive(deviceVM.$latestRawLog.dropFirst().compactMap { $0 }) { message in
             logMessage(message, type: .info)
         }
+        .onReceive(scanVM.$errorMessage.dropFirst().compactMap { $0 }) { message in
+            logMessage("Scan failed: \(message)", type: .error)
+        }
+        .onReceive(deviceVM.$otaStatus.dropFirst()) { status in
+            if let error = status.error {
+                logMessage("OTA \(status.state): \(error)", type: .error)
+            } else {
+                logMessage("OTA \(status.state): \(status.progress)%", type: .info)
+            }
+        }
+        .sheet(isPresented: $showingFirmwarePicker) {
+            FirmwareDocumentPicker { url in
+                deviceVM.selectedFirmwareURL = url
+                showingFirmwarePicker = false
+                logMessage("Selected firmware: \(url.lastPathComponent)", type: .info)
+            }
+        }
     }
-    
+
     // MARK: - Sections
-    
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(currentTime)
                 .font(.system(size: 16, design: .monospaced))
                 .foregroundColor(textPrimary)
-            
+
             Text("NEUROMETA")
                 .font(.system(size: 32, weight: .bold))
                 .foregroundColor(textPrimary)
                 .tracking(2)
                 .padding(.top, 4)
-            
+
             Text("EEG DATA ACQUISITION SDK")
                 .font(.system(size: 12))
                 .foregroundColor(textSecondary)
@@ -103,7 +124,7 @@ struct ContentView: View {
         }
         .padding(.bottom, 8)
     }
-    
+
     private var statusCards: some View {
         HStack {
             // BATTERY
@@ -112,21 +133,21 @@ struct ContentView: View {
                     .font(.system(size: 10))
                     .foregroundColor(textSecondary)
                     .tracking(1)
-                
+
                 Text(deviceVM.batteryLevel >= 0 ? "\(deviceVM.batteryLevel)%" : "--")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(batteryColor)
                     .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            
+
             // STATUS
             VStack(alignment: .leading) {
                 Text("STATUS")
                     .font(.system(size: 10))
                     .foregroundColor(textSecondary)
                     .tracking(1)
-                
+
                 Text(
                     deviceVM.isWearing == nil
                     ? "--"
@@ -147,7 +168,7 @@ struct ContentView: View {
         .cornerRadius(8)
         .padding(.bottom, 8)
     }
-    
+
     private var devicesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -155,20 +176,19 @@ struct ContentView: View {
                     .font(.system(size: 12))
                     .foregroundColor(textSecondary)
                     .tracking(1)
-                
+
                 Spacer()
-                
+
                 Text("\(scanVM.devices.count) FOUND")
                     .font(.system(size: 12))
                     .foregroundColor(accentRed)
                     .tracking(1)
             }
             .padding(.bottom, 4)
-            
+
             if scanVM.isScanning {
                 HStack(spacing: 8) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: accentRed))
+                    ActivityIndicator(color: UIColor(red: 0.9, green: 0.22, blue: 0.21, alpha: 1.0))
                     Text("SCANNING...")
                         .font(.system(size: 11))
                         .foregroundColor(textSecondary)
@@ -198,7 +218,7 @@ struct ContentView: View {
         }
         .padding(.bottom, 8)
     }
-    
+
     private var eegSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -206,20 +226,20 @@ struct ContentView: View {
                     .font(.system(size: 12))
                     .foregroundColor(textSecondary)
                     .tracking(1)
-                
+
                 Spacer()
-                
+
                 Text("-- Hz LIVE") // 真实环境需要接入 deviceVM.samplingRate
                     .font(.system(size: 12))
                     .foregroundColor(accentGreen)
                     .tracking(0.5)
             }
-            
+
             Text("CH1 · FP1")
                 .font(.system(size: 12))
                 .foregroundColor(textSecondary)
                 .padding(.bottom, 4)
-            
+
             // 实时波形图
             CyberWaveformView(values: deviceVM.realtimeValues, accentColor: accentGreen)
                 .frame(height: 200)
@@ -228,7 +248,7 @@ struct ContentView: View {
         }
         .padding(.bottom, 8)
     }
-    
+
     private var buttonsSection: some View {
         VStack(spacing: 16) {
             if deviceVM.connectionState != .connected {
@@ -265,7 +285,76 @@ struct ContentView: View {
         }
         .padding(.bottom, 8)
     }
-    
+
+    private var otaSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("FIRMWARE OTA")
+                .font(.system(size: 12))
+                .foregroundColor(textSecondary)
+                .tracking(1)
+
+            Toggle(isOn: $deviceVM.otaAwaitAck) {
+                Text("Await device ACK")
+                    .font(.system(size: 13))
+                    .foregroundColor(textSecondary)
+            }
+
+            Text(deviceVM.selectedFirmwareURL?.lastPathComponent ?? "No firmware selected")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(textSecondary)
+                .lineLimit(1)
+
+            HStack(spacing: 8) {
+                Button(action: { showingFirmwarePicker = true }) {
+                    Text("Select Firmware")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(textSecondary, lineWidth: 1)
+                        )
+                }
+
+                Button(action: {
+                    if let url = deviceVM.selectedFirmwareURL {
+                        deviceVM.startFirmwareUpgrade(fileURL: url)
+                    }
+                }) {
+                    Text("Start OTA")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(deviceVM.selectedFirmwareURL == nil ? textSecondary.opacity(0.4) : accentRed)
+                        .cornerRadius(4)
+                }
+                .disabled(deviceVM.selectedFirmwareURL == nil)
+            }
+
+            Button(action: { deviceVM.cancelFirmwareUpgrade() }) {
+                Text("Cancel OTA")
+                    .font(.system(size: 13))
+                    .foregroundColor(accentRed)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(accentRed, lineWidth: 1)
+                    )
+            }
+
+            Text("\(deviceVM.otaStatus.state) \(deviceVM.otaStatus.progress)% (\(deviceVM.otaStatus.sentChunks)/\(deviceVM.otaStatus.totalChunks))")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(deviceVM.otaStatus.error == nil ? accentGreen : accentRed)
+        }
+        .padding(16)
+        .background(surfaceDark)
+        .cornerRadius(8)
+        .padding(.bottom, 8)
+    }
+
     private var consoleLogSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -273,9 +362,9 @@ struct ContentView: View {
                     .font(.system(size: 12))
                     .foregroundColor(textSecondary)
                     .tracking(1)
-                
+
                 Spacer()
-                
+
                 Button(action: { logs.removeAll() }) {
                     Text("CLEAR")
                         .font(.system(size: 12))
@@ -284,9 +373,9 @@ struct ContentView: View {
                         .padding(4)
                 }
             }
-            
+
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(logs) { log in
                         Text(log.formattedText)
                             .font(.system(size: 11, design: .monospaced))
@@ -303,7 +392,7 @@ struct ContentView: View {
         }
         .padding(.bottom, 16)
     }
-    
+
     private var recordFooter: some View {
         VStack {
             if deviceVM.connectionState == .connected {
@@ -321,7 +410,7 @@ struct ContentView: View {
                         .foregroundColor(recordingVM.isRecording ? accentRed : textSecondary)
                 }
                 .padding(16)
-                
+
                 if recordingVM.isRecording {
                     Text("Recording: \(recordingVM.recordingDuration)s")
                         .font(.system(size: 12))
@@ -332,26 +421,26 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
     }
-    
+
     // MARK: - Helpers
-    
+
     private var batteryColor: Color {
         if deviceVM.batteryLevel > 50 { return accentGreen }
         if deviceVM.batteryLevel > 20 { return Color.orange }
         if deviceVM.batteryLevel >= 0 { return accentRed }
         return textSecondary
     }
-    
+
     private func updateTime() {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         currentTime = formatter.string(from: Date())
     }
-    
+
     private func initSDK() {
         logMessage("Initializing SDK...", type: .info)
         do {
-            let sdk = NeuroMeta.shared
+            let sdk = NeuroMetaSDK.shared
             let license = License.createDev(bundleId: Bundle.main.bundleIdentifier ?? "com.neurometa.demo")
             try sdk.initialize(license: license, config: .development(appKey: "demo_key"))
             logMessage("SDK initialized successfully", type: .success)
@@ -359,7 +448,7 @@ struct ContentView: View {
             logMessage("SDK init failed: \(error)", type: .error)
         }
     }
-    
+
     private func logMessage(_ text: String, type: LogType) {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
@@ -373,7 +462,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private func setupLogObservers() {}
 }
 
@@ -384,11 +473,11 @@ struct LogMessage: Identifiable {
     let timestamp: String
     let text: String
     let type: LogType
-    
+
     var formattedText: String {
         return "[\(timestamp)] \(text)"
     }
-    
+
     var color: Color {
         switch type {
         case .info: return Color.gray
@@ -408,7 +497,7 @@ struct DeviceItemView: View {
     let device: Device
     let isConnected: Bool
     let accentGreen: Color
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -437,12 +526,58 @@ struct DeviceItemView: View {
     }
 }
 
+struct ActivityIndicator: UIViewRepresentable {
+    let color: UIColor
+
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.color = color
+        view.hidesWhenStopped = false
+        view.startAnimating()
+        return view
+    }
+
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {
+        uiView.color = color
+        uiView.startAnimating()
+    }
+}
+
+struct FirmwareDocumentPicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let controller = UIDocumentPickerViewController(documentTypes: ["public.data"], in: .import)
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+
+        init(onPick: @escaping (URL) -> Void) {
+            self.onPick = onPick
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            onPick(url)
+        }
+    }
+}
+
 struct CyberWaveformView: View {
     let values: [Double]
     let accentColor: Color
     private let maxDisplayPoints = 250      // 5s @ 50Hz
     private let displayRange: Double = 100.0  // 与 Android chart 的 Y 轴范围一致 (-100~100)
-    
+
     var body: some View {
         GeometryReader { geo in
             let displayValues = Array(values.suffix(maxDisplayPoints))

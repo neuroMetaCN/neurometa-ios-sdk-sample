@@ -1,5 +1,6 @@
 import Combine
 import CoreBluetooth
+import Foundation
 import SwiftUI
 import NeuroMetaSDK
 
@@ -11,7 +12,7 @@ final class ScanViewModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var isScanning = false
     @Published var errorMessage: String?
-    private let sdk = NeuroMeta.shared
+    private let sdk = NeuroMetaSDK.shared
 
     private func upsertDevice(_ device: Device) {
         if let index = devices.firstIndex(where: { $0.id == device.id }) {
@@ -22,6 +23,8 @@ final class ScanViewModel: ObservableObject {
     }
 
     func scan() {
+        guard !isScanning else { return }
+
         guard sdk.isInitialized else {
             errorMessage = "SDK 未初始化"
             return
@@ -65,16 +68,24 @@ final class DeviceViewModel: ObservableObject {
     @Published var packetCount: Int = 0
     @Published var errorMessage: String?
     @Published var latestRawLog: String?
+    @Published var otaStatus = SmartEEGOtaStatus()
+    @Published var otaAwaitAck = false
+    @Published var selectedFirmwareURL: URL?
 
-    private let sdk = NeuroMeta.shared
+    private let sdk = NeuroMetaSDK.shared
     private var realtimeListenerId: UUID?
     private var statusListenerId: UUID?
     private var unfilteredListenerId: UUID?
+    private var otaCancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     private let maxPoints = 250
 
     private var filteredProcessor: FilteredEEGProcessor {
         sdk.filteredEEGProcessor
+    }
+
+    init() {
+        observeOtaStatus()
     }
 
     func connect(device: Device, centralManager: CBCentralManager) {
@@ -185,6 +196,31 @@ final class DeviceViewModel: ObservableObject {
         }
         sdk.dataCollector.setFilterConfig(config)
     }
+
+    func observeOtaStatus() {
+        otaCancellable = sdk.deviceManager.smartEegOtaStatusPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.otaStatus = status
+            }
+    }
+
+    func startFirmwareUpgrade(fileURL: URL) {
+        let awaitAck = otaAwaitAck
+        Task {
+            let options = SmartEEGOtaOptions(
+                chunkSize: SmartEEGOtaFrameBuilder.defaultChunkSize,
+                packetIntervalMs: 20,
+                awaitAck: awaitAck,
+                responseTimeoutMs: 1000
+            )
+            _ = await sdk.deviceManager.startSmartEegOta(fileURL: fileURL, options: options)
+        }
+    }
+
+    func cancelFirmwareUpgrade() {
+        _ = sdk.deviceManager.cancelSmartEegOta()
+    }
 }
 
 /// 录制 ViewModel
@@ -195,7 +231,7 @@ final class RecordingViewModel: ObservableObject {
     @Published var filePath: String?
     @Published var recordCount: Int = 0
 
-    private let sdk = NeuroMeta.shared
+    private let sdk = NeuroMetaSDK.shared
     private var rawListenerId: UUID?
     private var timer: Timer?
 

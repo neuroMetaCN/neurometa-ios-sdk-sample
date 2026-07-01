@@ -27,6 +27,46 @@ struct ContentView: View {
     let accentGreen = Color(red: 0.0, green: 1.0, blue: 0.0) // #00FF00
     let accentRed = Color(red: 0.9, green: 0.22, blue: 0.21) // #E53935
 
+    private var isConnectionIdle: Bool {
+        deviceVM.connectionState == .disconnected
+    }
+
+    private var canStartScan: Bool {
+        isConnectionIdle && !scanVM.isScanning && !deviceVM.isConnectInFlight
+    }
+
+    private var canSelectDevice: Bool {
+        isConnectionIdle && !scanVM.isScanning && !deviceVM.isConnectInFlight
+    }
+
+    private var connectionStateText: String {
+        switch deviceVM.connectionState {
+        case .disconnected:
+            return "DISCONNECTED"
+        case .scanning:
+            return "SCANNING"
+        case .connecting:
+            return "CONNECTING"
+        case .connected:
+            return "CONNECTED"
+        case .disconnecting:
+            return "DISCONNECTING"
+        case .reconnecting:
+            return "RECONNECTING"
+        }
+    }
+
+    private var connectionStateColor: Color {
+        switch deviceVM.connectionState {
+        case .connected:
+            return accentGreen
+        case .disconnected:
+            return textSecondary
+        case .scanning, .connecting, .disconnecting, .reconnecting:
+            return accentRed
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -162,6 +202,22 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            // CONNECTION
+            VStack(alignment: .leading) {
+                Text("CONNECTION")
+                    .font(.system(size: 10))
+                    .foregroundColor(textSecondary)
+                    .tracking(1)
+
+                Text(connectionStateText)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(connectionStateColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
         .background(surfaceDark)
@@ -202,9 +258,12 @@ struct ContentView: View {
                 ForEach(scanVM.devices) { device in
                     DeviceItemView(device: device, isConnected: deviceVM.currentDevice?.id == device.id, accentGreen: accentGreen)
                         .onTapGesture {
-                            logMessage("Connecting to \(device.id)...", type: .info)
-                            deviceVM.connect(device: device, centralManager: centralManager)
+                            guard canSelectDevice else { return }
+                            if deviceVM.connect(device: device, centralManager: centralManager) {
+                                logMessage("Connecting to \(device.id)...", type: .info)
+                            }
                         }
+                        .opacity(canSelectDevice ? 1.0 : 0.45)
                 }
             } else {
                 if !scanVM.isScanning {
@@ -253,6 +312,7 @@ struct ContentView: View {
         VStack(spacing: 16) {
             if deviceVM.connectionState != .connected {
                 Button(action: {
+                    guard canStartScan else { return }
                     logMessage("Scanning for devices...", type: .info)
                     scanVM.scan()
                 }) {
@@ -262,9 +322,10 @@ struct ContentView: View {
                         .tracking(1)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(accentRed)
+                        .background(canStartScan ? accentRed : textSecondary.opacity(0.4))
                         .cornerRadius(4)
                 }
+                .disabled(!canStartScan)
             } else {
                 Button(action: {
                     logMessage("Disconnecting...", type: .info)

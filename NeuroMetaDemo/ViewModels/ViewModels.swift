@@ -59,7 +59,7 @@ final class ScanViewModel: ObservableObject {
 /// 设备 ViewModel
 @MainActor
 final class DeviceViewModel: ObservableObject {
-    @Published var connectionState: ConnectionState = .disconnected
+    @Published var connectionState: ConnectionState
     @Published var currentDevice: Device?
     @Published var realtimeValues: [Double] = []
     @Published var batteryLevel: Int = -1
@@ -71,6 +71,7 @@ final class DeviceViewModel: ObservableObject {
     @Published var otaStatus = SmartEEGOtaStatus()
     @Published var otaAwaitAck = false
     @Published var selectedFirmwareURL: URL?
+    @Published private(set) var isConnectInFlight = false
 
     private let sdk = NeuroMetaSDK.shared
     private var realtimeListenerId: UUID?
@@ -85,14 +86,23 @@ final class DeviceViewModel: ObservableObject {
     }
 
     init() {
+        connectionState = sdk.deviceManager.connectionState
+        observeConnectionState()
         observeOtaStatus()
     }
 
-    func connect(device: Device, centralManager: CBCentralManager) {
-        guard sdk.isInitialized else { return }
+    @discardableResult
+    func connect(device: Device, centralManager: CBCentralManager) -> Bool {
+        guard sdk.isInitialized else { return false }
+        let sdkState = sdk.deviceManager.connectionState
+        guard !isConnectInFlight,
+              connectionState.isDisconnected,
+              sdkState.isDisconnected else {
+            return false
+        }
         errorMessage = nil
+        isConnectInFlight = true
         currentDevice = device
-        connectionState = .connecting
 
         Task {
             do {
@@ -102,23 +112,29 @@ final class DeviceViewModel: ObservableObject {
                     deviceName: device.name
                 )
                 await MainActor.run {
-                    self.connectionState = .connected
+                    self.isConnectInFlight = false
                     self.startListening()
                 }
             } catch {
                 await MainActor.run {
-                    self.connectionState = .disconnected
-                    self.currentDevice = nil
+                    self.isConnectInFlight = false
+                    if self.sdk.deviceManager.connectionState.isDisconnected {
+                        self.currentDevice = nil
+                    }
                     self.errorMessage = error.localizedDescription
                 }
             }
         }
+        return true
     }
 
     func disconnect() {
         stopListening()
         sdk.deviceManager.disconnect()
-        connectionState = .disconnected
+        clearDisconnectedDisplayState()
+    }
+
+    private func clearDisconnectedDisplayState() {
         currentDevice = nil
         realtimeValues.removeAll()
         batteryLevel = -1
@@ -195,6 +211,22 @@ final class DeviceViewModel: ObservableObject {
         default: config = .default()
         }
         sdk.dataCollector.setFilterConfig(config)
+    }
+
+    func observeConnectionState() {
+        sdk.deviceManager.connectionStatePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self = self else { return }
+                self.connectionState = state
+                if state == .connected {
+                    self.currentDevice = self.sdk.deviceManager.currentDevice
+                } else if state == .disconnected {
+                    self.stopListening()
+                    self.clearDisconnectedDisplayState()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func observeOtaStatus() {

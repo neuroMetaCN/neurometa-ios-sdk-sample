@@ -13,6 +13,7 @@
 | 实时波形显示 | ✅ | SwiftUI Path 绘制 |
 | EDF 文件录制 | ✅ | 标准 EDF 格式输出 |
 | 设备状态监测 | ✅ | 电池电量 & 佩戴状态 |
+| 连接状态显示 | ✅ | 顶部 `CONNECTION` 卡片展示 SDK 连接状态 |
 
 ---
 
@@ -36,6 +37,7 @@ dependencies: [
 ```
 
 > 如需更新 SDK 二进制：可从 `neuroMetaCN/neurometa-ios-sdk` 的 GitHub Actions 下载 `NeuroMetaSDK-Release-xcframework` artifact，或在 SDK 仓库的 macOS/Xcode 环境执行 `scripts/build_binary_package.sh` 后替换本项目的 `binary/` 目录。
+> Demo 顶部的 `CONNECTION` 卡片读取 `DeviceManager.connectionStatePublisher`。如果修改了 SDK 内部连接状态机源码，需要同步刷新 `binary/` 后 Demo 运行时才会包含这些 SDK 内部修复。
 
 ### 2. 配置 Info.plist
 
@@ -223,9 +225,23 @@ func connectDevice(_ device: Device) async {
 
 默认扫描过滤已包含 `eeg / sensor / neuro / smarteeg / em09e`。`SmartEEG-XXXX` 与 `EM09E-XXXXXX` 会被识别为 `SMART_EEG`，Demo 无需单独切换模式。
 
+### Step 5: 连接状态显示
+
+Demo 通过 `DeviceManager.connectionStatePublisher` 订阅 SDK 当前连接状态，并在顶部 `CONNECTION` 卡片显示：
+
+```swift
+sdk.deviceManager.connectionStatePublisher
+    .receive(on: DispatchQueue.main)
+    .sink { state in
+        connectionState = state
+    }
+```
+
+当前展示文案覆盖 `DISCONNECTED / SCANNING / CONNECTING / CONNECTED / DISCONNECTING / RECONNECTING`。Demo 还会在连接发起期间禁用扫描和设备行点击，避免旧二进制包运行时出现扫描与连接交错操作。
+
 ---
 
-### Step 5: 实时数据处理 (滤波)
+### Step 6: 实时数据处理 (滤波)
 
 如需对原始数据进行二次滤波处理：
 
@@ -250,7 +266,7 @@ dataCollector.addRealtimeListener { packet in
 
 ---
 
-### Step 6: EDF 文件录制
+### Step 7: EDF 文件录制
 
 ```swift
 func startRecording() {
@@ -295,7 +311,7 @@ The SDK supports local-file SmartEEG firmware OTA on iOS 13.0+.
 
 ---
 
-### Step 7: 资源释放
+### Step 8: 资源释放
 
 在页面销毁时释放资源：
 

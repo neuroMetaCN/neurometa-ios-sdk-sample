@@ -90,6 +90,7 @@ final class DeviceViewModel: ObservableObject {
     init() {
         connectionState = sdk.deviceManager.connectionState
         observeConnectionState()
+        observeCurrentDevice()
         observeOtaStatus()
     }
 
@@ -116,7 +117,6 @@ final class DeviceViewModel: ObservableObject {
                 await MainActor.run {
                     self.isConnectInFlight = false
                     self.startListening()
-                    self.scheduleFirmwareVersionQuery()
                 }
             } catch {
                 await MainActor.run {
@@ -232,6 +232,15 @@ final class DeviceViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func observeCurrentDevice() {
+        sdk.deviceManager.currentDevicePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] device in
+                self?.currentDevice = device
+            }
+            .store(in: &cancellables)
+    }
+
     func observeOtaStatus() {
         otaCancellable = sdk.deviceManager.smartEegOtaStatusPublisher
             .receive(on: DispatchQueue.main)
@@ -266,20 +275,7 @@ final class DeviceViewModel: ObservableObject {
 
     @discardableResult
     func queryFirmwareVersion() -> Bool {
-        let requested = sdk.deviceManager.querySmartEegFirmwareVersion()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refreshCurrentDevice()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.refreshCurrentDevice()
-        }
-        return requested
-    }
-
-    private func scheduleFirmwareVersionQuery() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            _ = self?.queryFirmwareVersion()
-        }
+        sdk.deviceManager.querySmartEegFirmwareVersion()
     }
 }
 

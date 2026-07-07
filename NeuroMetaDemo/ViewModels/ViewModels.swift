@@ -146,6 +146,9 @@ final class DeviceViewModel: ObservableObject {
 
     func startListening() {
         guard sdk.isInitialized else { return }
+        guard realtimeListenerId == nil,
+              statusListenerId == nil,
+              unfilteredListenerId == nil else { return }
         let started = sdk.deviceManager.startListening()
         guard started else { return }
 
@@ -193,6 +196,9 @@ final class DeviceViewModel: ObservableObject {
     }
 
     func stopListening() {
+        guard realtimeListenerId != nil ||
+              statusListenerId != nil ||
+              unfilteredListenerId != nil else { return }
         sdk.deviceManager.stopListening()
         if let id = realtimeListenerId { sdk.dataCollector.removeListener(id: id) }
         if let id = statusListenerId { sdk.dataCollector.removeListener(id: id) }

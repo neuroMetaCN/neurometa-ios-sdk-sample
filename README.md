@@ -305,9 +305,8 @@ The SDK supports local-file SmartEEG firmware OTA on iOS 13.0+.
 
 - The app provides a local firmware file URL.
 - The SDK validates, splits, and writes OTA packets over BLE.
-- `awaitAck` defaults to `false` for faster transfer.
-- OTA defaults use `packetIntervalMs=120` and `responseTimeoutMs=5000`.
-- Enable `awaitAck` for diagnostics when device responses are needed.
+- OTA defaults use `awaitAck=true`, `chunkSize=128`, `packetIntervalMs=120`, and `responseTimeoutMs=5000`.
+- Set `awaitAck=false` explicitly only when non-ACK transfer mode is required.
 - The SDK does not download firmware or perform remote version checks.
 
 ---

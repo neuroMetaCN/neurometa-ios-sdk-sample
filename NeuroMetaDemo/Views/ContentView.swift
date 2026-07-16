@@ -501,7 +501,7 @@ struct ContentView: View {
     private func initSDK() {
         logMessage("Initializing SDK...", type: .info)
         do {
-            let sdk = NeuroMetaSDK.shared
+            let sdk = NeuroMeta.shared
             let license = License.createDev(bundleId: Bundle.main.bundleIdentifier ?? "com.neurometa.demo")
             try sdk.initialize(license: license, config: .development(appKey: "demo_key"))
             logMessage("SDK initialized successfully", type: .success)

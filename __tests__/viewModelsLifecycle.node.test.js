@@ -6,6 +6,10 @@ const source = fs.readFileSync(
   new URL('../NeuroMetaDemo/ViewModels/ViewModels.swift', import.meta.url),
   'utf8'
 )
+const contentViewSource = fs.readFileSync(
+  new URL('../NeuroMetaDemo/Views/ContentView.swift', import.meta.url),
+  'utf8'
+)
 
 function methodBody(name) {
   const marker = `func ${name}()`
@@ -45,4 +49,10 @@ test('iOS demo data listener lifecycle is idempotent', () => {
     /guard\s+realtimeListenerId\s*!=\s*nil\s*\|\|\s*statusListenerId\s*!=\s*nil\s*\|\|\s*unfilteredListenerId\s*!=\s*nil\s+else\s*\{\s*return\s*\}/s,
     'stopListening must avoid repeated SDK stop calls when listeners are already cleared'
   )
+})
+
+test('iOS demo uses the binary-compatible SDK entry point', () => {
+  const appSource = `${source}\n${contentViewSource}`
+  assert.match(appSource, /NeuroMeta\.shared/)
+  assert.doesNotMatch(appSource, /NeuroMetaSDK\.shared/)
 })

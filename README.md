@@ -125,7 +125,7 @@ iOS 蓝牙权限通过 `Info.plist` 声明，系统会在首次使用时自动�
 ```swift
 import NeuroMetaSDK
 
-let sdk = NeuroMetaSDK.shared
+let sdk = NeuroMeta.shared
 
 func initSDK() {
     do {
